@@ -1,9 +1,10 @@
 ---
 title: "Lab 7: Boosting"
 output: 
+#author: "Alicia Toshima"
   html_document: 
-    highlight: pygments
-    theme: spacelab
+  highlight: pygments
+  theme: spacelab
 ---
 
 <img src="http://andrewpbray.github.io/math-243/assets/figs/letters.png" align = "middle"> 
@@ -37,7 +38,10 @@ You will want to build your model on a training data set and evaluate its perfor
 
 ```{r eval = FALSE}
 set.seed(1)
-train <- sample(1:nrow(lettersdf), nrow(letterdf) * .75)
+lettersdf <- read.csv("letters.csv", header = FALSE)
+train <- sample(1:nrow(lettersdf), nrow(lettersdf) * .75)
+#lettersdf <- data.frame(lettersdf)
+
 ```
 
 
@@ -45,34 +49,83 @@ train <- sample(1:nrow(lettersdf), nrow(letterdf) * .75)
 
 Contruct a boosted tree to predict the class of the training images (the letters) based on its 16 features. This can be done with the `gbm()` function in the library of the same name. Look to the end of chapter 8 for an example of the implementation. Note that we'll be performing a boosted *classification* tree. It's very similar to the boosted regression tree except the method of calculating a residual is adapted to the classification setting. Please use as your model parameters $B = 50$, $\lambda = 0.1$, and $d = 1$. Note that this is computationally intensive, so it may take a minute to run. Which variable is found to be the most important?
 
+```{r}
+library(gbm)
+boost.lettersdf <- gbm(V1 ~., data = lettersdf[train,], distribution = "multinomial", n.trees = 50, interaction.depth = 1, shrinkage = 0.1)
+summary(boost.lettersdf)
+```
+The most important variable found was V13. Becuase we named T V1, we actually have 17 variables so V13 corresponds to the sum of the vertical positions of edges encountered. The feature that will give a higher value if there are more edges at the top of the box, as in the letter "Y."
 
 #### Assessing predictions
 
 Now use this boosted model to predict the classes of the images in the training data set. Use the same number of trees and be sure to add the argument `type = "response"`. The output of this will be a 5000 X 26 X 1 array: for each image you'll have a predicted probability that it is from each of the 26 classes. To extract the vector of length 5000 of each final predicted class, you can use the following function.
 
 ```{r eval = FALSE}
+yhat <- predict(boost.lettersdf, newdata = lettersdf[-train,], type = "response", n.trees = 50)
 predicted <- LETTERS[apply(yhat, 1, which.max)]
+conf.boost <- table(predicted, lettersdf$V1[-train])
+conf.boost
+
+missclass <- 1 - sum(diag(conf.boost))/sum(conf.boost)
+missclass
+
 ```
 
 Where `yhat` is the output of the `predict()` function.
 
 a. Build a cross-tabulation of the predicted and actual letters (a 26 X 26 confusion matrix).
-b. What is your misclassification rate? (the function `diag()` might be helpful)
-c. What letter was most difficult to predict?
-d. Are there any letter pairs that are particularly difficult to distinguish?
 
+b. What is your misclassification rate? (the function `diag()` might be helpful)
+The missclassification rate is `r missclass`.
+
+c. What letter was most difficult to predict?
+E. In the confusion matrix, it was only predicted correctly 73 times. 
+
+d. Are there any letter pairs that are particularly difficult to distinguish?
+E was often predicted ot be X. 
 
 #### Slow the learning
 
 Build a second boosted tree model that uses even *slower* learners, that is, decrease $\lambda$ and increase $B$ somewhat to compensate (the slower the learner, the more of them we need). Pick the parameters of your choosing for this, but be wary of trying to fit a model with too high a $B$. You don't want to wait an hour for your model to fit.
 
+```{r}
+library(gbm)
+boost.2 <- gbm(V1 ~., data = lettersdf[train,], distribution = "multinomial", n.trees = 1000, interaction.depth = 1, shrinkage = 0.01)
+summary(boost.2)
+yhat.2 <- predict(boost.2, newdata = lettersdf[-train,], type = "response", n.trees = 1000)
+predicted.2 <- LETTERS[apply(yhat.2, 1, which.max)]
+conf.boost.2 <- table(predicted.2, lettersdf$V1[-train])
+conf.boost.2
+
+
+missclass.2 <- 1 - sum(diag(conf.boost.2))/sum(conf.boost.2)
+missclass.2
+```
+
 a. How does the misclassification rate compare to the rate from you original model?
+This misclassification error is 0.261, which is lower by 0.058.
+ 
 b. Are there any letter pairs that became particularly easier/more difficult to distinguish?
+E, B, and D became easier to predict. S may have become harder to predict. 
 
 * * *
 
 ### Communities and Crime
 
-Return to the Communities and Crime data set. In the last lab you added bagged trees and random forests to your model portfolio in trying to predict the crime level. Constructed model based on a boosted tree with parameters of your choosing. How does the test MSE compare to your existing models?
+Return to the Communities and Crime data set. In the last lab you added bagged trees and random forests to your model portfolio in trying to predict the crime level. Construct a model based on a boosted tree with parameters of your choosing. How does the test MSE compare to your existing models?
+
+```{r}
+crime.train <- read.csv("crime-train.csv", header = TRUE, na.strings = "?")
+crime.test <- read.csv("crime-test.csv", header = TRUE, na.strings = "?")
+crime.train <- crime.train[ -c(1:4) ]
+crime.test <- crime.test[ -c(1:4) ]
+boost.crime <- gbm(ViolentCrimesPerPop ~., data = crime.train, distribution = "multinomial", n.trees = 50, interaction.depth = 1, shrinkage = 0.1)
+summary(boost.crime)
+pred.crime <- predict(boost.crime, newdata = crime.test, type = "response", n.trees = 50)
+
+mse.boost <- mean((pred.crime-crime.test$ViolentCrimesPerPop)^2)
+mse.boost
+```
+From the previous lab, we obtained mse.bag = 0.126 and ms.rf = 0.123. The mse.boost = 0.112; it is smaller than the previous ones.
 
 [^1]: P. W. Frey and D. J. Slate. "Letter Recognition Using Holland-style Adaptive Classifiers". (Machine Learning Vol 6 #2 March 91) 
